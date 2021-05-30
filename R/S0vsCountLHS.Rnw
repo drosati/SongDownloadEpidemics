@@ -1,0 +1,140 @@
+\documentclass[12pt]{article}
+
+\textheight 9in 
+\textwidth 6.5in
+\topmargin -0.5in
+\oddsidemargin 0in
+\evensidemargin 0in
+%\hoffset=-0.5in
+\voffset=-0.25in
+
+\usepackage{scrtime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphics,graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage[english]{babel}
+\usepackage{tikz}
+
+\title{Calculated $S_0$ vs. Download Count}
+\author{Dora Rosati}
+\date{\today\ @ \thistime}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Description}
+
+This document is used to create a plot of calculated $S_0$ vs. download count. It may be expanded at some point to include comparison plots of more parameters (this would more closely resemble SongParmComparisons.Rnw).
+
+\section{Load Relevant Packages}
+
+<<loadtikz,cache=FALSE>>=
+library("tikzDevice")
+@ 
+
+<<loadpackages,cache=FALSE>>=
+
+library(plyr)
+library(dplyr)
+library(ggplot2); theme_set(theme_bw())
+
+@ 
+
+\section{Settings}
+
+<<settings,cache=FALSE>>=
+
+## set minimum R0 to for excluding songs
+source("minR0calcGB.R") # this will end up creating a parameter min.R0,
+# which is the lowest possible R0
+
+## set various parameter limits by sourcing a file with settings
+## can reference a different file for (example) users with 5-5000 downloads
+source("ParameterSettings.R")
+
+## set a maximum R0 (population of GB mid-2014)
+max.R0 <- 64596800
+
+@ 
+
+\section{Load and Manipulate Data}
+
+<<loaddata,cache=FALSE>>=
+
+## load Christmas song list
+## specify the path to the file that contains list of songs to be excluded
+## note that this file contains song titles only -- load it now
+songstoexcludefile <- "ExcludedSongsGB.tsv"
+songstoexcludedf <- read.delim(songstoexcludefile,quote="",header=FALSE)
+names(songstoexcludedf) <- "title"
+
+## load dataframes and exclude the songs on the exclusion list
+SIR.songsdf <- read.delim("songlistparamsGB.tsv",quote="")
+SIR.songsdf <- subset(SIR.songsdf,!is.element(title,songstoexcludedf$title))
+SIR.songsdf <- subset(SIR.songsdf,R0>=min.R0 & rel.fit.goodness<max.rel.fit)
+names(SIR.songsdf)[names(SIR.songsdf)=="genre"] <- "Genre" #Purely for convenient legend formatting
+dd <- SIR.songsdf
+
+@ 
+
+\section{Create Plot}
+
+<<s0vscount,cache=FALSE,dev="tikz",fig.height=7>>=
+
+par(mar=c(5.1,5.6,4.1,2.1))
+with(dd,plot(count,Calculated.s0,pch=1 #Or 20 for filled in dots?
+             ,ylim=c(0,1.1*max(count))
+             ,xlab="Download Count"
+             #,ylab="Calculated $S_0$"
+             ,ylab=""
+             ,las=1,cex.lab=1.5,cex.axis=1.5,ps=1.5,cex=1.5))
+lines(seq(0.001,30000.001,1),seq(0.001,30000.001,1),col="red",lwd=3)
+text(15000,10000,"$y = x$",cex=1.5)
+
+mtext("Calculated $S_0$",side=2,line=4.5,cex=1.5)
+
+
+@ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\end{document}

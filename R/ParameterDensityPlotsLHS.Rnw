@@ -1,0 +1,234 @@
+\documentclass[12pt]{article}
+
+\textheight 9in 
+\textwidth 6.5in
+\topmargin -0.5in
+\oddsidemargin 0in
+\evensidemargin 0in
+%\hoffset=-0.5in
+\voffset=-0.25in
+
+\usepackage{scrtime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphics,graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage[english]{babel}
+\usepackage{tikz}
+
+\title{Parameter Density Plots}
+\author{Dora Rosati}
+\date{\today\ @ \thistime}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Description}
+
+This document is used to create plots that show distribution of parameters by genre.
+
+\section{Load Relevant Packages}
+
+<<loadtikz,cache=FALSE>>=
+library("tikzDevice")
+@ 
+
+<<loadpackages,cache=FALSE>>=
+
+library(plyr)
+library(dplyr)
+library(ggplot2); theme_set(theme_bw())
+
+@ 
+
+\section{Settings}
+
+<<settings,cache=FALSE>>=
+
+## set minimum R0 to for excluding songs
+source("minR0calcGB.R") # this will end up creating a parameter min.R0,
+# which is the lowest possible R0
+
+## set various parameter limits by sourcing a file with settings
+## can reference a different file for (example) users with 5-5000 downloads
+source("ParameterSettings.R")
+
+## set a maximum R0 (population of GB mid-2014)
+max.R0 <- 64596800
+
+@ 
+
+\section{Load and Manipulate Data}
+
+<<loaddata,cache=FALSE>>=
+
+## load Christmas song list
+## specify the path to the file that contains list of songs to be excluded
+## note that this file contains song titles only -- load it now
+songstoexcludefile <- "ExcludedSongsGB.tsv"
+songstoexcludedf <- read.delim(songstoexcludefile,quote="",header=FALSE)
+names(songstoexcludedf) <- "title"
+
+## load dataframes and exclude the songs on the exclusion list
+SIR.songsdf <- read.delim("songlistparamsGB.tsv",quote="")
+SIR.songsdf <- subset(SIR.songsdf,!is.element(title,songstoexcludedf$title))
+SIR.songsdf <- subset(SIR.songsdf,R0>=min.R0 & rel.fit.goodness<max.rel.fit)
+names(SIR.songsdf)[names(SIR.songsdf)=="genre"] <- "Genre" #Purely for convenient legend formatting
+dd <- SIR.songsdf
+
+
+@ 
+
+\subsection{$\mathcal{R}_0$ Data}
+
+<<manipulateR0data,cache=FALSE>>=
+
+## exploring distribution of extremes
+subfn <- function(x,lwr,upr) x[lwr<x & x<upr]
+hist(log10(dd$R0))
+hist(subfn(log10(dd$R0),-10,10))
+#dd2 <- subset(dd,R0>=min.R0 & R0<max.R0)
+dd2 <- subset(dd,R0>=min.R0) #this is technically not needed anymore (already done in previous section)
+
+## g0 is for the density plots
+g0 <- ggplot(dd2,
+       aes(x=R0,fill=Genre))+
+    scale_x_log10(limits=c(1,max.R0),expand=c(0,0))+ ##COMMENT: This rescales rather than just zooming; using coord_cartesian below would solve this, but it is not as big a problem for density plots as it is for boxplots
+    #scale_x_log10(expand=c(0,0))+
+    scale_y_continuous(expand=c(0,0))+
+  #coord_cartesian(xlim=c(1,max.R0))+
+    scale_fill_brewer(palette="Paired", direction=-1)
+
+## we probably don't need this -- built-in log10 transformation
+## is probably good enough ...
+R0trans <- scales::trans_new("R0trans",
+                     trans=function(x) log10(x-1),
+                     inv=function(x) 1+10^x,
+                     domain = c(1+.Machine$double.eps, Inf))
+
+## g1 is for the boxplot
+g1 <- ggplot(dd2,
+             aes(x=Genre,y=R0,fill=Genre))+
+  #scale_y_log10(limits=c(1,max.R0),expand=c(0,0))+ ##COMMENT: Problem with this is that it rescales rather than just zooming; using coord_cartesian below to solve this
+  #scale_colour_brewer(palette="Paired", direction=-1) #reverses colours byt makes them look saturated
+  #scale_colour_manual(values = rev(brewer.pal(n=12,name="Paired"))) # reverses colours but makes them look really saturated
+  scale_y_log10(expand=c(0,0))+
+  coord_cartesian(ylim=c(1,max.R0))+
+  scale_fill_brewer(palette="Paired", direction=-1)
+
+R0_meds <- ddply(dd2, .(Genre), summarise, med = round(median(R0),2))
+#R0_meds <- ddply(dd3, .(Genre), summarise, med = round(median(R0),2))
+
+@ 
+
+\subsection{Mean Infectious Period Data}
+
+<<infperdata,cache=FALSE>>=
+
+hist(log10(dd$infper))
+hist(subfn(log10(dd$infper),-10,10))
+#ddinfper <- subset(dd,R0>min.R0 & R0<max.R0)
+ddinfper <- subset(dd,R0>min.R0)
+
+## g0.infper is for the density plots
+g0.infper <- ggplot(ddinfper,
+                    aes(x=infper,fill=Genre))+
+  scale_x_log10(limits=c(0.0000000001,410),expand=c(0,0))+
+  scale_y_continuous(expand=c(0,0))+
+  scale_fill_brewer(palette="Paired", direction=-1)
+
+## g1.infper is for the boxplot
+g1.infper <- ggplot(ddinfper,
+                    aes(x=Genre,y=infper,fill=Genre))+
+  scale_y_log10(limits=c(0.0000000001,410),expand=c(0,0))+
+                                        #scale_colour_brewer(palette="Paired", direction=-1) #reverses colours byt makes them look saturated
+                                        #scale_colour_manual(values = rev(brewer.pal(n=12,name="Paired"))) # reverses colours but makes them look really saturated
+  scale_fill_brewer(palette="Paired", direction=-1)
+
+infper_meds <- ddply(ddinfper, .(Genre), summarise, med = round(median(infper),2))
+
+@ 
+
+\section{Create Plots}
+
+\subsection{Create $\mathcal{R}_0$ Plots}
+
+<<R0densityplots,cache=FALSE,dev="tikz",fig.height=6>>=
+
+g0 + geom_density(position="stack") +
+  labs(x="$\\mathcal{R}_0$",y="Density") +
+  theme(axis.text.y=element_text(size=14), axis.title=element_text(size=16)
+        ,axis.text.x=element_text(size=14)
+             #, axis.text.x=element_blank(), axis.ticks.x=element_blank()
+             )
+
+g0 + geom_density(position="stack",adjust=2)## smoother
+g0 + geom_density(position="stack",adjust=0.25) ## wigglier
+g0 + geom_density(position="identity",alpha=0.4)
+
+@ 
+
+<<R0boxplot,dev="tikz",cache=FALSE,fig.height=6,fig.width=6>>=
+
+print(g1 + geom_boxplot() + 
+      geom_text(data=R0_meds, aes(x = Genre, y = med, label = med), 
+                size = 3, vjust = -0.5)
+      +labs(y="$\\mathcal{R}_0$",x="Genre")
+      +theme(axis.text.y=element_text(size=14), axis.title=element_text(size=16), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+      +theme(legend.position="none")
+      )
+
+@ 
+
+\subsection{Create Mean Infectious Period Plots}
+
+<<infperdensityplots,cache=FALSE,dev="tikz",fig.height=6>>=
+
+g0.infper + geom_density(position="stack")
+
+g0.infper + geom_density(position="stack",adjust=2) ## smoother
+g0.infper + geom_density(position="stack",adjust=0.25) ## wigglier
+g0.infper + geom_density(position="identity",alpha=0.4)
+
+@ 
+
+<<infperboxplot,dev="tikz",cache=FALSE,fig.height=6>>=
+
+print(g1.infper + geom_boxplot() + 
+      geom_text(data=infper_meds, aes(x = Genre, y = med, label = med), 
+                size = 3, vjust = -0.5)
+      #+labs(y="$\\mathcal{R}_0$",x="Genre")
+      #+theme(axis.text.y=element_text(size=14), axis.title=element_text(size=16), axis.text.x=element_blank(), axis.ticks.x=element_blank())
+      )
+
+
+@ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\end{document}

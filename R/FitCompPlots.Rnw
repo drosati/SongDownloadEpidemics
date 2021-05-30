@@ -1,0 +1,294 @@
+\documentclass[12pt]{article}
+
+\textheight 9in 
+\textwidth 6.5in
+\topmargin -0.5in
+\oddsidemargin 0in
+\evensidemargin 0in
+%\hoffset=-0.5in
+\voffset=-0.25in
+
+\usepackage{scrtime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphics,graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage[english]{babel}
+\usepackage{tikz}
+
+\title{Relative Fit Scatter Plot for GB}
+\author{Dora Rosati & Ben Bolker}
+\date{\today\ @ \thistime}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Description}
+
+This document is used to create violin plots comparing the goodness of fit of the SIR model against splines for both song downloads and generated epidemic data.
+
+\section{Load Relevant Packages}
+
+<<loadtikz,cache=FALSE>>=
+library("tikzDevice")
+@ 
+
+<<loadpackages,cache=FALSE,message=FALSE>>=
+
+library(fitsir)
+library(bbmle) ## needed for coef() ...
+library(splines) ## for ns()
+library(plyr)  ## for raply()
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(ggplot2); theme_set(theme_bw())
+library(gridExtra)
+library(ggstance) ## for horizontal violins
+
+@ 
+
+\section{Load and Manipulate Song Data}
+
+<<loaddata,cache=FALSE>>=
+## load seasonal song list
+## specify the path to the file that contains list of songs to be excluded
+## note that this file contains song titles only -- load it now
+songstoexcludefile <- "../Top1000GBSongsData/ExcludedSongsGB.tsv"
+songstoexcludedf <- read.delim(songstoexcludefile,quote="",header=FALSE)
+names(songstoexcludedf) <- "title"
+
+## load dataframes and exclude the songs on the exclusion list
+SIR.songsdf <- read.delim("../Top1000GBSongsData/LHSSongFits/songlistparamsGB.tsv",quote="")
+SIR.songsdf <- subset(SIR.songsdf,!is.element(title,songstoexcludedf$title))
+spline.songsdf <- read.delim("../Top1000GBSongsData/songlistsplineparamsGB.tsv",quote="")
+spline.songsdf <- subset(spline.songsdf,!is.element(title,songstoexcludedf$title))
+
+## order both by count
+SIR.songsdf <- SIR.songsdf[order(-SIR.songsdf$count),]
+spline.songsdf <- spline.songsdf[order(-spline.songsdf$count),]
+
+## get number of songs
+nsongs <- nrow(SIR.songsdf)
+
+@ 
+
+\section{Load and Manipulate Epidemic Data}
+
+<<loadepidemicdata,echo=FALSE>>=
+## load data - this loads lhs_df and res
+load("/Users/dorarosati/Desktop/School/Graduate School/Song Download Epidemics/Mixradio/StochasticSIR/stochsim_4.rda")
+res.df <- as.data.frame(res)
+## Find the fit measures for the SIR model
+SIR.fit1.index <- which(names(res.df)=="fitsir.1_mse") # store the column number for the first SIR fit
+SIR.fit2.index <- which(names(res.df)=="fitsir.2_mse") # store the column number for the second SIR fit
+SIR.fits <- res.df[,SIR.fit1.index]
+##replacing below line with above where we select the correct SIR fit from res.df
+#SIR.fits <- pmin(res.df[,SIR.fit1.index],res.df[,SIR.fit2.index]) # collects the lowest fit measure for the SIR model to each stocastic epidemic curve
+SIR.fits <- sqrt(SIR.fits) #stochsim_4.rda has mse fit info, turning it into rmse
+
+## In the same way, find the fit measures for the spline
+spline.fit1.index <- which(names(res.df)=="spline.1_mse")
+spline.fit2.index <- which(names(res.df)=="spline.2_mse")
+spline.fit3.index <- which(names(res.df)=="spline.3_mse")
+spline.fit4.index <- which(names(res.df)=="spline.4_mse")
+spline.fit5.index <- which(names(res.df)=="spline.5_mse")
+
+spline.fits <- res.df[,spline.fit3.index]
+##replacing below line with above line since we should be using the spline fit with 4 knots (to match the number of parameters in the SIR model fits)
+#spline.fits <- pmin(res.df[,spline.fit1.index],res.df[,spline.fit2.index],res.df[,spline.fit3.index],res.df[,spline.fit4.index],res.df[,spline.fit5.index])
+spline.fits <- sqrt(spline.fits) #stochsim_4.rda has mse fit info, turning it into rmse
+
+## Create a dataframe out of these two vectors
+epidemic.fits.df <- data.frame(SIR.fits,spline.fits) %>%
+  setNames(c("SIR","Spline")) #NOTE: these were previoulsy "SIR.rms" and "spline.rms", which is slightly more accurate; was changed for labels in plot
+## Trim out the ones that didn't result in a fit
+epidemic.fits.df <- subset(epidemic.fits.df,!is.na(SIR) & !is.na(Spline))
+
+## get number of epidemics
+nepidemics <- nrow(epidemic.fits.df)
+
+@ 
+
+<<loadepidemicdata2>>=
+## copy material from old stochsim.rmd
+res2 <- (res
+    %>% data.frame(as.is=TRUE)
+    %>% select(contains("mse"))
+    %>% na.omit()
+)
+## Order of columns in sim output is:
+## - 1,2: fitsir with "auto" and "true" start
+## - 3: smooth spline with 6 coefficients (minimum practical)
+## - 4,5: `ns()` with 4 coefficients, lin/log scale criterion
+## - 6,7: `ns()` with 6 coeff, ditto
+## It turns out the fits with the linear-scale criterion have *terrible*
+## MSEs, leaving these out for now.
+labs <- c("fitsir_auto","fitsir_true",
+          "spline_smooth","spline_ns4lin","spline_ns4log",
+          "spline_ns6lin","spline_ns6log")
+(setNames(res2,labs)
+    ## add sim variable (for grouping)
+    %>% mutate(sim=1:nrow(res2))
+    ## convert to long format
+    %>% gather(method,mse,-sim)
+    ## split fitsir+(auto,true), spline+(x)
+    %>% separate(method,c("method","method2"))
+    ## find minimum mse by group (SIR auto vs true)
+    %>% group_by(method,sim)
+    %>% summarise(mse=min(mse))
+    %>% ungroup() ## want to modify method, can't be grouping variable
+    %>% mutate(rms=sqrt(mse),
+               method=factor(method,
+                             levels=c("fitsir","spline"),
+                             labels=c("SIR","Spline")))
+) -> epidemic.fits.df.g0
+@ 
+
+\section{Gather Fit Data for Songs}
+
+<<songfitsdata,cache=FALSE>>=
+
+## create dataframe of fit data only
+song.fits.df <- data.frame(SIR.songsdf$rel.fit.goodness,spline.songsdf$rel.fit.goodness) %>%
+  setNames(c("SIR","Spline")) #NOTE: these were previously "SIR.rms" and "spline.rms", which is slightly more accurate; was changed for labels in plot
+
+## do some manipulation for the violin plot
+song.fits.df.g <- gather(song.fits.df,method,rms)
+gsum <- song.fits.df.g %>% group_by(method) %>%
+  mutate(lmse = log10(rms)) %>%
+  summarise(median=median(lmse),min=quantile(lmse,0.025),
+            max=quantile(lmse,0.975))
+
+@ 
+
+\section{Further Manipulate Fit Data for Epidemics}
+
+<<epidemicfitsdata,cache=FALSE>>=
+
+## do some manipulation for the violin plot
+epidemic.fits.df.g <- gather(epidemic.fits.df,method,rms)
+gsum.epi <- epidemic.fits.df.g %>% group_by(method) %>%
+  mutate(lmse = log10(rms)) %>%
+  summarise(median=median(lmse),min=quantile(lmse,0.025),
+            max=quantile(lmse,0.975))
+
+@ 
+
+\section{Create Plots for Song Data}
+
+<<ggplotmanipulation,cache=FALSE>>=
+
+## create some plots (Ben should check these)
+## a histogram
+gghist <- ggplot(gather(song.fits.df,method,rms),aes(x=log10(rms),fill=method))+
+    geom_histogram(alpha=0.4,position="identity",bins=30)
+## a stacked density plot
+ggdens <- ggplot(gather(song.fits.df,method,rms),aes(x=log10(rms),fill=method))+
+    geom_density(alpha=0.4,position="identity")
+## a violin plot
+ggviolin <- ggplot(song.fits.df.g,aes(x=log10(rms),y=method,fill=method))+
+    geom_violinh()+
+    scale_fill_brewer(palette="Set1")+
+    theme(legend.position="none")+
+    geom_pointrangeh(data=gsum,aes(x=median,xmin=min,xmax=max))
+@ 
+
+<<songhistogram,dev="tikz",fig.height=7,cache=FALSE>>=
+
+print(gghist+ggtitle(sprintf("Song Comparison ($n=%d$)",nsongs)))
+
+@ 
+
+<<songdensity,cache=FALSE,dev="tikz",fig.height=7>>=
+
+print(ggdens+ggtitle(sprintf("Song Comparison ($n=%d$)",nsongs)))
+
+@ 
+
+<<songviolin,cache=FALSE,dev="tikz",fig.height=6>>=
+
+print(ggviolin+labs(y="Fitting Method",x="$\\log_{10}(\\rm{Fit Measure})$")
+      +theme(axis.text.x=element_text(size=14), axis.text.y=element_text(size=14), axis.title=element_text(size=16))
+      )
+
+@ 
+
+\section{Create Plots for Epidemic Data}
+
+<<ggplotmanipulationepidemics,cache=FALSE>>=
+
+## create some plots (Ben should check these)
+## a histogram
+gghist.epi <- ggplot(gather(epidemic.fits.df,method,rms),aes(x=log10(rms),fill=method))+
+    geom_histogram(alpha=0.4,position="identity",bins=30)
+## a stacked density plot
+ggdens.epi <- ggplot(gather(epidemic.fits.df,method,rms),aes(x=log10(rms),fill=method))+
+    geom_density(alpha=0.4,position="identity")
+## a violin plot
+ggviolin.epi <- ggplot(epidemic.fits.df.g,aes(x=log10(rms),y=method,fill=method))+
+    geom_violinh()+
+    scale_fill_brewer(palette="Set1")+
+    theme(legend.position="none")+
+    geom_pointrangeh(data=gsum.epi,aes(x=median,xmin=min,xmax=max))
+
+@ 
+
+<<epidemichistogram,dev="tikz",fig.height=7,cache=FALSE>>=
+
+print(gghist.epi+ggtitle(sprintf("Epidemic Comparison ($n=%d$)",nepidemics)))
+
+@ 
+
+<<epidemicdensity,cache=FALSE,dev="tikz",fig.height=7>>=
+
+print(ggdens.epi+ggtitle(sprintf("Epidemic Comparison ($n=%d$)",nepidemics)))
+
+@ 
+
+<<epidemicviolin,cache=FALSE,dev="tikz",fig.height=6>>=
+
+print(ggviolin.epi+labs(y="Fitting Method",x="$\\log_{10}(\\rm{Fit Measure})$")
+      +theme(axis.text.x=element_text(size=14), axis.text.y=element_text(size=14), axis.title=element_text(size=16))
+      )
+
+@ 
+
+
+\section{combined violin plots}
+<<combinedviolin,cache=FALSE,dev="tikz",fig.height=6>>=
+comb.fits.df <- (bind_rows(list(Songs=song.fits.df,
+               "Infection Curves"=epidemic.fits.df),
+               .id="type")
+    %>% pivot_longer(cols=c("SIR","Spline"),
+                     names_to="method",
+                     values_to="rms")
+)
+
+sumfun <- function(x) {
+    data.frame(xmin=min(x),xmax=max(x),x=median(x))
+}
+
+(ggplot(comb.fits.df,aes(x=log10(rms),y=method,fill=method,alpha=method))
+    + geom_violinh(
+      #aes(alpha=type)
+      )
+    + scale_alpha_manual(values=c(0.5,1))
+    + scale_fill_brewer(palette="Set1")
+    + theme(legend.position="none")
+    + stat_summary(geom="pointrangeh",fun.data=sumfun)
+    + facet_wrap(~type,ncol=1)
+    + labs(y="Fitting Method",x="$\\log_{10}(\\rm{Fit Measure})$")
+)
+@ 
+
+
+
+\end{document}

@@ -1,0 +1,250 @@
+\documentclass[12pt]{article}
+
+\textheight 9in 
+\textwidth 6.5in
+\topmargin -0.5in
+\oddsidemargin 0in
+\evensidemargin 0in
+%\hoffset=-0.5in
+\voffset=-0.25in
+
+\usepackage{scrtime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphics,graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage[english]{babel}
+\usepackage{tikz}
+
+\title{Downloads in Different Genres in GB and XHeads in GB}
+\author{Dora Rosati}
+\date{\today\ @ \thistime}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+This document creates various plots that describe things about the
+users in the database and the downloads in GB from 2007-2014.
+
+\section{Some Notes}
+
+For now, genre vectors and colour vectors are each being created in
+chunks rather than at the top of the document. It may be logical to
+change this at some point, but for now this is the best way to do it.
+\begin{itemize}
+\item In future, it might make sense to have an R script that
+  determines what genres are in the song set we're examining and saves
+  this as an .RData object. Then this script could be run at the top
+  of any .Rnw file like this one and the resulting .RData object could
+  be loaded as a genre vector (genre.vec) in the chunks that have
+  selected genres.
+\end{itemize}
+
+I'm sure there's a better way to deal with margins.
+
+At the moment problem genres are fixed here and in scripts like
+StackedParamHistograms.Rnw and other scripts that compare
+parameters. This should probably be done at a higher level
+(\emph{i.e.,} probably in the `PlotAndParms' scripts. If that is
+eventually fixed (which it should be), it won't be an issue to still
+have the fix genre checks here and in other scripts, but they can be
+eliminated.
+
+\section{Load tikz Device}
+
+See title.
+
+<<loadtikz,cache=FALSE>>=
+library("tikzDevice")
+@ 
+
+\section{Load Important Packages}
+
+<<loadpackages,cache=FALSE>>=
+## dplyr for manipulating data (requires plyr)
+library("plyr")
+library("dplyr")
+
+## colorBrewer to use the colour blind friendly package
+library("RColorBrewer")
+brewer.pal(n=10,name="Paired") # spew colours
+
+## also load Ben's axis function
+source("newaxis.R")
+
+@ 
+
+\section{Create Graded Colour Function}
+
+The function `colours' accepts an argument `n' and spits out n
+different colours that are different shades of (currently) purple. n
+is set in the chunks below as needed.
+
+<<createcolourfunction,cache=FALSE>>=
+
+## create a graded colour function that will spit out colours based on number of genres (accepts argument n)
+colours <- colorRampPalette(c("purple4","gray100"))
+
+@ 
+
+\section{Set Some Graphical Parameters}
+
+Setting some parameters here that will be used a lot. Will add to this
+as I go.
+
+<<setgraphicalparms,cache=FALSE>>=
+
+mycex.main <- 2.5
+mycex.axis <- 1.75
+mycex.lab <- 1.75
+
+@ 
+
+\section{Load Downloads By Genre Data Frame}
+
+Here the table with download counts for each genre for all users in GB is loaded. The names of three genres are changed to be tikz-friendly.
+
+<<loadgenredownloadsdata,cache=FALSE>>=
+
+## load data frame of genres and downloads for all users
+genre.downloads <- read.delim("downloadsbygenreGB.tsv")
+
+## set names of genre downloads data frame (first column needs to be fixed from "count..." and might as well do the second column to be safe)
+names(genre.downloads) <- c("count","genre")
+
+## switch three problem genres
+## switch R 'n' B to R&B
+levels(genre.downloads$genre)[levels(genre.downloads$genre)=="Soul/R 'n' B/Funk"] <- "Soul/R\\&B/Funk"
+
+## fix the & in Indipop & Remix
+levels(genre.downloads$genre)[levels(genre.downloads$genre)=="Indipop & Remix"] <- "Indipop \\& Remix"
+
+## fix the _ in rock_and_pop
+levels(genre.downloads$genre)[levels(genre.downloads$genre)=="rock_and_pop"] <- "rock\\_and\\_pop"
+
+@ 
+
+
+\subsection{Downloads by All Users}
+
+First we look at downloads when considering all users in the
+database.
+
+<<SelectedGenresAllUsers,dev="tikz",cache=FALSE,fig.height=9>>=
+
+# this chunk was edited on June 15, '15 by Dora Rosati
+
+## make vector of colours for future use
+col.vec <- brewer.pal(n=12,name="Paired")
+
+# This is the list of colours, cutting it out in favour of the command that spews the vector of colours
+#c("#A6CEE3","#1F78B4","#B2DF8A","#33A02C","#FB9A99","#E31A1C","#FDBF6F","#FF7F00","#CAB2D6","#6A3D9A")
+
+## again we only want the genres that are in the top 1000 songs
+## create a vector of the genres we want to deal with
+genre.vec <- c("Bollywood","Country and Western","Dance","Electronica","Indie/Alternative","Jazz","Metal","Pop","Rap/Hip Hop","Reggae","Rock","Soul/R\\&B/Funk")
+
+## take a subset of the data frame that only has these genres - must rename so that genre.downloads can be used in other chunks
+genredf <- subset(genre.downloads,is.element(genre,genre.vec))
+genredf <- data.frame(genredf,col.vec) %>%
+  setNames(c("count", "genre", "colour"))
+
+## reorder genre downloads data frame in by genres with greatest number of downloads
+## reoder colour vector and genre vector in the same way to match
+genre.vec <- genre.vec[with(genredf,order(-count))] # this is so labels will be correct in plot
+col.vec <- rev(col.vec) # reversing colours because pastels were overtaking the graph
+col.vec <- col.vec[with(genredf,order(-count))]
+genredf <- genredf[with(genredf,order(-count)),]
+
+## create title and x-label
+titlestring <- paste("Downloads by Genre ","\n","in Great Britain")
+xlabstring <- paste("Total Downloads in GB from 2007-2014")
+
+## create barplot of only genres over 50 000
+par(mar=c(4.1,14.6,4.6,4.3))
+
+
+with(genredf,
+     barplot(count,names.arg=genre.vec,xlab=xlabstring,main=titlestring,las=1,horiz=TRUE,xlim=c(0,max(count)),col=col.vec,cex.axis=mycex.axis,cex.names=1.75,cex.main=mycex.main,cex.lab=mycex.lab
+            ,xaxt="n"
+             )
+     )
+
+#eaxis(1,at.small=FALSE,lab.type="latex",cex.axis=2)
+lab.pts <- c(0,5,10,15) 
+at.pts <- lab.pts*10^6
+labs <- c("0","5M","10M","15M") 
+axis(1,at=at.pts,labels=labs,cex.axis=1.5)
+## add x10^6 on RHS:
+##text(max(at.pts)*1.05,-0.2,"$\\times10^6$",pos=4,cex=1.3,xpd=NA)
+
+@ 
+
+A normalized graph.
+
+<<SelectedGenresAllUsersNorm,dev="tikz",cache=FALSE,fig.height=6.5>>=
+
+# this chunk was edited on Dec. 18, '15 by Dora Rosati
+
+## make vector of colours for future use
+col.vec <- brewer.pal(n=10,name="Paired")
+
+# This is the list of colours, cutting it out in favour of the command that spews the vector of colours
+#c("#A6CEE3","#1F78B4","#B2DF8A","#33A02C","#FB9A99","#E31A1C","#FDBF6F","#FF7F00","#CAB2D6","#6A3D9A")
+
+## again we only want the genres that are in the top 1000 songs
+## create a vector of the genres we want to deal with
+genre.vec <- c("Classical","Country and Western","Dance","Electronica","Indie/Alternative","Jazz","Metal","Pop","Rap/Hip Hop","Reggae","Rock","Soul/R\\&B/Funk")
+
+tot.downloads <- with(genre.downloads,sum(count))
+
+## take a subset of the data frame that only has these genres - must rename so that genre.downloads can be used in other chunks
+genredf <- subset(genre.downloads,is.element(genre,genre.vec))
+
+## reorder genre downloads data frame in by genres with greatest number of downloads
+## reoder colour vector and genre vector in the same way to match
+col.vec <- c("#E31A1C", "#CAB2D6", "#1F78B4", "#33A02C", "#FDBF6F", "#6A3D9A", "#FB9A99", "#FFFF99", "#B15928", "#B2DF8A", "#A6CEE3", "#FF7F00")
+genre.vec <- genre.vec[with(genredf,order(-count))] # this is so labels will be correct in plot
+genredf <- genredf[with(genredf,order(-count)),]
+
+## create title and x-label
+titlestring <- paste("Downloads by Genre ","\n","in Great Britain")
+#xlabstring <- paste("Proportion of Total Downloads","\n","in GB from 2007-2014")
+xlabstring <- paste("Proportion of Total Downloads")
+
+## create barplot of only genres over 50 000
+par(mar=c(5.6,14.6,3.6,4.3))
+
+
+with(genredf,
+     barplot(count/tot.downloads,names.arg=genre.vec
+             #,xlab=xlabstring
+             #,main=titlestring
+             ,main="",las=1,horiz=TRUE,xlim=c(0,max(count/tot.downloads)),col=col.vec,cex.axis=mycex.axis,cex.names=1.75,cex.main=mycex.main,cex.lab=mycex.lab
+             ,xaxt="n"
+             )
+     )
+
+mtext(xlabstring,side=1,cex=mycex.axis,line=3.5)
+
+eaxis(1,at.small=FALSE,lab.type="latex",cex.axis=mycex.axis)
+#lab.pts <- c(0,5,10,15) 
+#at.pts <- lab.pts*10^6
+#labs <- c("0","5M","10M","15M") 
+#axis(1,at=at.pts,labels=labs,cex.axis=1.5)
+## add x10^6 on RHS:
+##text(max(at.pts)*1.05,-0.2,"$\\times10^6$",pos=4,cex=1.3,xpd=NA)
+
+@ 
+
+
+
+
+\end{document}

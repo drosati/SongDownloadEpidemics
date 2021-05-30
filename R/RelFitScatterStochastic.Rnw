@@ -1,0 +1,185 @@
+\documentclass[12pt]{article}
+
+\textheight 9in 
+\textwidth 6.5in
+\topmargin -0.5in
+\oddsidemargin 0in
+\evensidemargin 0in
+%\hoffset=-0.5in
+\voffset=-0.25in
+
+\usepackage{scrtime}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{graphics,graphicx}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{hyperref}
+\usepackage[english]{babel}
+\usepackage{tikz}
+
+\title{Relative Fit Scatter Plot for GB}
+\author{Dora Rosati}
+\date{\today\ @ \thistime}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\newpage
+
+\section{Description}
+
+This document is used to create a scatter plot showing relative fit
+for the SIR model vs. relative fit for a cubic spline for songs in GB.
+
+\section{Load Relevant Packages}
+
+<<loadtikz,cache=FALSE>>=
+library("tikzDevice")
+@ 
+
+<<loadpackages,cache=FALSE>>=
+
+library("plyr")
+library("dplyr")
+library("RColorBrewer")
+
+@ 
+
+\section{Set a Few Parameters}
+
+<<setparms,cache=FALSE>>=
+
+## set minimum R0 to for excluding songs
+#source("minR0calcGB.R") # this will end up creating a parameter min.R0,
+# which I don't think we need
+
+## set various parameter limits by sourcing a file with settings
+## can reference a different file for (example) users with 5-5000 downloads
+source("ParameterSettings.R")
+# might still be using max.rel.fit from here...
+
+## specify the path to the file that contains list of songs to be excluded
+## note that this file contains song titles only -- load it now
+#songstoexcludefile <- "../ExcludedSongsGB.tsv"
+#songstoexcludedf <- read.delim(songstoexcludefile,quote="",header=FALSE)
+#names(songstoexcludedf) <- "title"
+#shouldn't need any of the above anymore
+
+## load axis function
+source("newaxis.R")
+
+@ 
+
+\section{Load and Manipulate Data}
+
+<<datamanipulation,cache=FALSE>>=
+## load data - this loads lhs_df and res
+load("/Users/dorarosati/Desktop/School/Graduate School/Song Download Epidemics/Mixradio/StochasticSIR/stochsim_4.rda")
+res.df <- as.data.frame(res)
+
+## Find the fit measures for the SIR model
+SIR.fit.index <- which(names(res.df)=="fitsir.1_mse") # store the column number for the first SIR fit, which is the auto option (not true)
+SIR.fits <- res.df[,SIR.fit.index] # collects the fit measure for the SIR model to each stocastic epidemic curve
+SIR.fits <- sqrt(SIR.fits) #stochsim_4.rda has mse fit info, turning it into rmse
+
+## In the same way, find the fit measures for the spline
+spline.fit.index <- which(names(res.df)=="spline.3_mse")
+spline.fits <- res.df[,spline.fit.index] # collects the fit measure for the spline fitted to each stochastic epidemic curve
+spline.fits <- sqrt(spline.fits) #stochsim_4.rda has mse fit info, turning it into rmse
+
+## Create a dataframe out of these two vectors
+epidemic.fits.df <- data.frame(SIR.fits,spline.fits) %>%
+  setNames(c("SIR.fit","spline.fit"))
+## Trim out the ones that didn't result in a fit
+epidemic.fits.df <- subset(epidemic.fits.df,!is.na(SIR.fit) & !is.na(spline.fit))
+
+## subset into two data frames -- good and bad SIR fits
+epidemic.fits.good.df <- subset(epidemic.fits.df,SIR.fit<max.rel.fit) %>%
+  setNames(c("SIR.fit","spline.fit"))
+epidemic.fits.bad.df <- subset(epidemic.fits.df,SIR.fit>=max.rel.fit) %>%
+  setNames(c("SIR.fit","spline.fit"))
+
+## try to generate desired colours...
+col.vec <- brewer.pal(10,"Paired")[c(5,10)]
+
+@ 
+
+\section{Create Scatter Plot}
+
+<<fitscatter,cache=FALSE,dev="tikz",fig.height=7>>=
+
+par(mar=c(5.1,5.1,4.1,2.1))
+## plot the fit measures for bad fit songs first because they'll have the most extreme values
+with(epidemic.fits.bad.df,plot(spline.fit,SIR.fit,pch=1
+                           ,col=col.vec[1]
+                           ,ylim=c(0.5,40),xlim=c(0.5,10)
+                           ,log="xy"
+                           ,xlab="Fit Measure for Spline"
+                           #,ylab="Fit Measure for SIR"
+                           ,ylab=""
+                           ,yaxt="n"
+                           ,las=1,cex.lab=1.5,cex.axis=1.5,ps=1.5,cex=1.5))
+with(epidemic.fits.good.df,points(spline.fit,SIR.fit
+                              #,pch=4
+                              ,pch=20
+                              ,col=col.vec[2]
+                              ))
+lines(seq(0.001,150.001,1),seq(0.001,150.001,1))
+mtext("Fit Measure for SIR",side=2,line=4,cex=1.5)
+mtext("Epidemics",side=3,line=1,cex=2)
+#eaxis(2,at.small=FALSE,lab.type="latex",cex.axis=1.5)
+axis(2,at=c(1,5,10,20,40),labels=c("1","5","10","20","40"),las=1,cex.axis=1.5)
+## add legend and y=x text
+text(45,95,"$y = x$",cex=1.5)
+legend("topright",c("Excluded SIR Fits","Included SIR Fits")
+       #,fill=col.vec
+       #,pch=c(1,4)
+       ,pch=c(1,20)
+       ,col=col.vec,cex=1.3
+       ,bg="white"
+       )
+
+@ 
+
+\section{Some Other Stats}
+
+<<otherthings,cache=FALSE>>=
+## determine the number of songs that were good and bad fits
+sprintf("%i splines were good fits",nrow(epidemic.fits.good.df))
+sprintf("%i splines were bad fits",nrow(epidemic.fits.bad.df))
+
+## determine number of songs above x=y line
+epidemic.fits.df$ratio <- epidemic.fits.df$SIR.fit/epidemic.fits.df$spline.fit
+above.epidemics <- nrow(subset(epidemic.fits.df,ratio>1))
+print(above.epidemics)
+
+## also determine number of these that were good fits
+epidemic.fits.good.df$ratio <- epidemic.fits.good.df$SIR.fit/epidemic.fits.good.df$spline.fit
+above.epidemic.good <- nrow(subset(epidemic.fits.good.df,ratio>1))
+print(above.epidemic.good)
+
+## determine how many songs are outside the plotting region
+## songs either have spline>50, SIR>600 or both
+out.of.plot.df <- subset(epidemic.fits.df,spline.fit>10|SIR.fit>20)
+n.out.of.plot <- nrow(out.of.plot.df)
+print(n.out.of.plot)
+
+
+@ 
+
+
+
+
+
+
+
+
+
+
+
+
+\end{document}
