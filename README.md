@@ -89,3 +89,6 @@ EpidemicFitData.tsv
 SongFitData.tsv
 - contains relative fit measures for both SIR and spline models fitted to our song download curves
 - also contains various parameters extracted from the SIR fits for song download curves
+
+SongDownloadData.zip
+- contains all .tsv files with (proportional) download time series for the songs in our sample set
