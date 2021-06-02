@@ -1,6 +1,36 @@
 # SongDownloadEpidemics
 Supporting data and scripts for the paper Modelling Song Popularity as a Contagious Process
 
+###########################
+## REQUIRED R PACKAGES ####
+###########################
+
+R packages that are used for the various scripts in this repo are:
+
+rJava
+stats4
+nloptr
+plyr
+dplyr
+lubridate
+timeDate
+fitsir
+bbmle
+lattice
+lhs
+deSolve
+GillespieSSA
+splines
+tibble
+tidyr
+ggplot2
+gridExtra
+ggstance
+tikzDevice
+RColorBrewer
+mgcv
+
+
 #######################
 ## FIGURE SCRIPTS #####
 #######################
